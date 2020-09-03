@@ -5,8 +5,7 @@ import 'dart:core';
 import 'package:flutter/services.dart';
 
 typedef void OnCompleteCallback(String result, Tus tus);
-typedef void OnProgressCallback(
-    int bytesWritten, int bytesTotal, double progress, Tus tus);
+typedef void OnProgressCallback(int bytesWritten, int bytesTotal, double progress, Tus tus);
 typedef void OnErrorCallback(String error, Tus tus);
 
 // The Tus Flutter client.
@@ -14,8 +13,7 @@ typedef void OnErrorCallback(String error, Tus tus);
 // Each tus flutter client supports one endpoint url to upload files to.
 // If you need multiple tus upload endpoints, instantiate multiple tus clients.
 class Tus {
-  static const MethodChannel _channel =
-      const MethodChannel('io.tus.flutter_service');
+  static const MethodChannel _channel = const MethodChannel('io.tus.flutter_service');
 
   // The endpoint url.
   final String endpointUrl;
@@ -35,12 +33,7 @@ class Tus {
   // [iOS-only] Allows cellular access for uploads.
   bool allowCellularAccess = true;
 
-  Tus(this.endpointUrl,
-      {this.onProgress,
-      this.onComplete,
-      this.onError,
-      this.headers,
-      this.allowCellularAccess}) {
+  Tus(this.endpointUrl, {this.onProgress, this.onComplete, this.onError, this.headers, this.allowCellularAccess}) {
     assert(endpointUrl != null);
     _channel.setMethodCallHandler(this.handler);
   }
@@ -62,12 +55,11 @@ class Tus {
 
     // Trigger the onProgress callback if the callback is provided.
     if (call.method == "progressBlock") {
-      var bytesWritten = call.arguments["bytesWritten"];
-      var bytesTotal = call.arguments["bytesTotal"];
+      var bytesWritten = int.tryParse(call.arguments["bytesWritten"]);
+      var bytesTotal = int.tryParse(call.arguments["bytesTotal"]);
       if (onProgress != null) {
         double progress = bytesWritten / bytesTotal;
-        onProgress(int.tryParse(bytesWritten), int.tryParse(bytesTotal),
-            progress, this);
+        onProgress(bytesWritten, bytesTotal, progress, this);
       }
     }
 
@@ -95,8 +87,7 @@ class Tus {
 
   // Initialize the tus client on the native side.
   Future<Map> initializeWithEndpoint() async {
-    var response =
-        await _channel.invokeMethod("initWithEndpoint", <String, String>{
+    var response = await _channel.invokeMethod("initWithEndpoint", <String, String>{
       "endpointUrl": endpointUrl,
       "allowCellularAccess": allowCellularAccess.toString(),
     });
@@ -109,9 +100,8 @@ class Tus {
   // Performs a file upload using the tus protocol. Provide a [fileToUpload].
   // Optionally, you can provide [metadata] to enrich the file upload.
   // Note that filename is provided in the [metadata] upon upload.
-  Future<dynamic> createUploadFromFile(String fileToUpload,
-      {Map<String, String> metadata}) async {
-    if(!isInitialized) {
+  Future<dynamic> createUploadFromFile(String fileToUpload, {Map<String, String> metadata}) async {
+    if (!isInitialized) {
       await initializeWithEndpoint();
     }
 
@@ -122,8 +112,7 @@ class Tus {
     }
 
     try {
-      var result = await _channel
-          .invokeMapMethod("createUploadFromFile", <String, dynamic>{
+      var result = await _channel.invokeMapMethod("createUploadFromFile", <String, dynamic>{
         "endpointUrl": endpointUrl,
         "fileUploadUrl": fileToUpload,
         "retry": retry.toString(),
