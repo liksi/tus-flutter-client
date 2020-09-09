@@ -94,7 +94,6 @@ public class TusPlugin implements FlutterPlugin, MethodCallHandler {
             a.put("endpointUrl", endpointUrl);
             result.success(a);
         } else if (call.method.equals("createUploadFromFile")) {
-            System.out.println("Preparing upload");
 
             HashMap<String, Object> arguments = (HashMap<String, Object>) call.arguments;
 
@@ -127,8 +126,6 @@ public class TusPlugin implements FlutterPlugin, MethodCallHandler {
             if (arguments.containsKey("retry")) {
                 retryCount = Integer.parseInt(String.valueOf(arguments.get("retry")));
             }
-
-            System.out.println("Starting upload");
 
             HandleFileUpload b = new HandleFileUpload(result, client, fileUploadUrl, methodChannel, endpointUrl, metadata);
             try {
@@ -171,8 +168,6 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
 
     @Override
     protected HashMap<String, String> doInBackground(Void... voids) {
-        System.out.println("Do in background");
-
         File file = new File(uploadFileUrl);
         final TusUpload upload;
         try {
@@ -202,11 +197,7 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
 
                 // Upload the file as long as data is available. Once the
                 // file has been fully uploaded the method will return -1
-                System.out.println("Before the loop");
-
                 do {
-                    System.out.println("Entering the loop");
-
                     long totalBytes = upload.getSize();
                     long bytesUploaded = uploader.getOffset();
                     double progress = (double) bytesUploaded / totalBytes * 100;
@@ -224,11 +215,9 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
                             methodChannel.invokeMethod("progressBlock", a);
                         }
                     });
-                    System.out.println("Quitting the loop");
                 } while (uploader.uploadChunk() > -1);
 
                 uploader.finish();
-                System.out.println("Completed upload");
 
                 final HashMap<String, String> s = new HashMap<>();
                 s.put("endpointUrl", endpointUrl);
@@ -245,7 +234,6 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
         };
 
         try {
-            System.out.println("Try to make attempt");
             tusExecutor.makeAttempts();
             HashMap<String, String> a = new HashMap<>();
             a.put("inProgress", "true");
