@@ -111,11 +111,13 @@ class Tus {
       metadata = Map<String, String>();
     }
 
+    var argRetry = metadata["retry"] ?? retry.toString();
+
     try {
       var result = await _channel.invokeMapMethod("createUploadFromFile", <String, dynamic>{
         "endpointUrl": endpointUrl,
         "fileUploadUrl": fileToUpload,
-        "retry": retry.toString(),
+        "retry": argRetry,
         "headers": headers,
         "metadata": metadata,
       });
