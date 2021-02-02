@@ -227,7 +227,7 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
                     public void run() {
                         // Call the desired channel message here.
                         methodChannel.invokeMethod("resultBlock", s);
-                        result.success(s);
+                        result.success(s); // Check if needed on iOS side
                     }
                 });
             }

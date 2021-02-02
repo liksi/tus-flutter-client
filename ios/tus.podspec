@@ -13,8 +13,7 @@ Tus Flutter Client
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'Lionell Yip' => 'watonly.me@gmail.com' }
   s.source           = { :path => '.' }
-  s.source_files = 'Classes/**/*'
-  s.public_header_files = 'Classes/**/*.h'
+  s.source_files = 'Classes/**/*.swift'
   s.dependency 'Flutter'
   s.dependency 'TUSKit'
   s.platform = :ios, '8.0'
