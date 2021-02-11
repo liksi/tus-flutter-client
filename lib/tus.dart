@@ -87,9 +87,10 @@ class Tus {
 
   // Initialize the tus client on the native side.
   Future<Map> initializeWithEndpoint() async {
-    var response = await _channel.invokeMethod("initWithEndpoint", <String, String>{
+    print("Init with endpoint, allowCellularAccess ? $allowCellularAccess");
+    var response = await _channel.invokeMethod("initWithEndpoint", <String, Object>{
       "endpointUrl": endpointUrl,
-      "allowCellularAccess": allowCellularAccess.toString(),
+      "options": <String, String>{ "allowsCellularAccess": allowCellularAccess.toString(),},
     });
 
     isInitialized = true;
