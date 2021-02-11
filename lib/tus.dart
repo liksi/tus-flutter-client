@@ -31,9 +31,17 @@ class Tus {
   int retry = -1;
 
   // [iOS-only] Allows cellular access for uploads.
-  bool allowCellularAccess = true;
+  bool allowsCellularAccess = true;
+  // [iOS-only] Configure for background tasks
+  bool enableBackground = true;
 
-  Tus(this.endpointUrl, {this.onProgress, this.onComplete, this.onError, this.headers, this.allowCellularAccess}) {
+  Tus(this.endpointUrl,
+      {this.onProgress,
+      this.onComplete,
+      this.onError,
+      this.headers,
+      this.allowsCellularAccess,
+      this.enableBackground}) {
     assert(endpointUrl != null);
     _channel.setMethodCallHandler(this.handler);
   }
@@ -87,9 +95,12 @@ class Tus {
 
   // Initialize the tus client on the native side.
   Future<Map> initializeWithEndpoint() async {
-    var response = await _channel.invokeMethod("initWithEndpoint", <String, String>{
+    var response = await _channel.invokeMethod("initWithEndpoint", <String, dynamic>{
       "endpointUrl": endpointUrl,
-      "allowCellularAccess": allowCellularAccess.toString(),
+      "options": <String, String>{
+        "allowsCellularAccess": allowsCellularAccess.toString(),
+        "enableBackground": enableBackground.toString(),
+      },
     });
 
     isInitialized = true;

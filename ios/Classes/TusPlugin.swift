@@ -1,16 +1,16 @@
 import Flutter
 import TUSKit
 
-public class TusPlugin: NSObject, FlutterPlugin, TUSDelegate {
+public class TusPlugin: NSObject, FlutterPlugin {
     private static let channelName = "io.tus.flutter_service"
     // invalidParameters = "Invalid Parameters"
     // fileName = "tuskit_example"
 
     let channel: FlutterMethodChannel
-    let urlSessionConfiguration: URLSessionConfiguration
+    private var urlSessionConfiguration: URLSessionConfiguration?
 
-    var configured = false
-    var configuredEndpointUrl = ""
+    private var configured = false
+    private var configuredEndpointUrl = ""
 
     public static var registerPlugins: FlutterPluginRegistrantCallback?
 
@@ -26,13 +26,6 @@ public class TusPlugin: NSObject, FlutterPlugin, TUSDelegate {
 
     init(_ channel: FlutterMethodChannel) {
         self.channel = channel
-        self.urlSessionConfiguration = URLSessionConfiguration.default // TODO: change for "background" with an identifier
-        self.urlSessionConfiguration.httpMaximumConnectionsPerHost = 1
-        self.urlSessionConfiguration.allowsCellularAccess = true
-        self.urlSessionConfiguration.sessionSendsLaunchEvents = true
-        if #available(iOS 11.0, *) {
-            self.urlSessionConfiguration.waitsForConnectivity = true
-        }
     }
 
     // MARK: ApplicationDelegate
@@ -42,72 +35,66 @@ public class TusPlugin: NSObject, FlutterPlugin, TUSDelegate {
         return true
     }
 
-    // MARK: TUSDelegate
-    public func TUSProgress(bytesUploaded uploaded: Int, bytesRemaining remaining: Int) {
-        var a = [String: String]()
-        a["bytesWritten"] = String(uploaded)
-        a["bytesTotal"] = String(remaining) // Misnaming in TUSKit v2.0.0 release, "remaining" is effectively "total"
-        a["endpointUrl"] = self.configuredEndpointUrl
-
-        self.channel.invokeMethod("progressBlock", arguments: a)
-    }
-
-    public func TUSProgress(forUpload upload: TUSUpload, bytesUploaded uploaded: Int, bytesRemaining remaining: Int) {
-        // This delegate method is not called from TUSKit v2.0.0 release
-    }
-
-    public func TUSSuccess(forUpload upload: TUSUpload) {
-        var a = [String: String]()
-        a["endpointUrl"] = self.configuredEndpointUrl
-        a["resultUrl"] = upload.uploadLocationURL?.absoluteString
-
-        self.channel.invokeMethod("resultBlock", arguments: a)
-        // result(a) ???
-    }
-
-    public func TUSFailure(forUpload upload: TUSUpload?, withResponse response: TUSResponse?, andError error: Error?) {
-        var a = [String: String]()
-        a["endpointUrl"] = self.configuredEndpointUrl
-        a["error"] = error as? String
-
-        self.channel.invokeMethod("failureBlock", arguments: a)
-    }
-
     // MARK: Flutter method call handling
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) -> Void {
-        let arguments = call.arguments as! [String: Any?]
-        let options = arguments["options"] as? [String: Any?]
-
         switch call.method {
         case "getPlatformVersion":
             result("iOS " + UIDevice.current.systemVersion)
         case "initWithEndpoint":
-            self.initWithEndpoint(arguments, result)
+            self.initWithEndpoint(call, result)
         case "createUploadFromFile":
-            self.createUploadFromFile(arguments, result)
+            self.createUploadFromFile(call, result)
         default:
             result(FlutterMethodNotImplemented)
         }
     }
 
-    private func initWithEndpoint(_ arguments: [String: Any?], _ result: @escaping FlutterResult) {
+    private func initWithEndpoint(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+        let arguments = call.arguments as! [String: Any?]
+        let options = arguments["options"] as? [String: Any?]
+
         // TODO: rework on this section to check for existing "session"
         let endpointUrl = arguments["endpointUrl"] as! String
         if (!self.configured) {
-            var config = TUSConfig(withUploadURLString: endpointUrl, andSessionConfig: self.urlSessionConfiguration)
-            config.logLevel = TUSLogLevel.Debug // options ?
-            self.urlSessionConfiguration.allowsCellularAccess = true // options ?
+            self.configureURLSession(options)
+            let config = TUSConfig(withUploadURLString: endpointUrl, andSessionConfig: self.urlSessionConfiguration!)
+            config.logLevel = .All // options ?
             TUSClient.setup(with: config)
             TUSClient.shared.delegate = self
-            // TUSClient.shared.chunkSize =
+            // TODO: configurable chunksize
+            // TUSClient.shared.chunkSize = // options ?
+            TUSClient.shared.status = .ready
             self.configuredEndpointUrl = endpointUrl
             self.configured = true
         }
-        TUSClient.shared.resumeAll() // retryAll() ?
+//        TUSClient.shared.resumeAll()
+
         result(["endpointUrl": endpointUrl])
     }
 
-    private func createUploadFromFile(_ arguments: [String: Any?], _ result: @escaping FlutterResult) {
+    private func configureURLSession(_ options: [String: Any?]?) {
+        let backgroundEnabled = options?["enableBackground"] as? String == "true"
+        let allowsCellularAccess = options?["allowsCellularAccess"] as? String == "true"
+
+        if (backgroundEnabled) {
+            self.urlSessionConfiguration = URLSessionConfiguration.background(withIdentifier: TusPlugin.channelName)
+        } else {
+            self.urlSessionConfiguration = URLSessionConfiguration.default
+        }
+
+        self.urlSessionConfiguration?.httpMaximumConnectionsPerHost = 1
+        self.urlSessionConfiguration?.allowsCellularAccess = true
+        self.urlSessionConfiguration?.sessionSendsLaunchEvents = true
+        self.urlSessionConfiguration?.allowsCellularAccess = allowsCellularAccess
+        if #available(iOS 11.0, *) {
+            self.urlSessionConfiguration?.waitsForConnectivity = true
+        }
+    }
+
+    private func createUploadFromFile(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+        let arguments = call.arguments as! [String: Any?]
+        let options = arguments["options"] as? [String: Any?]
+
         if (!self.configured) {
             result(["error": "You must configure TUS before calling upload, use initWithEndpoint method"])
             return
@@ -125,7 +112,7 @@ public class TusPlugin: NSObject, FlutterPlugin, TUSDelegate {
             return
         }
         fileType = "." + fileType
-        guard let headers = arguments["headers"] as? [String: String] else {
+        guard let headers = arguments["headers"] as? [String: String] else { // Not mandatory anymore
             result(["error": "You must set headers for TUS"])
             return
         }
@@ -133,9 +120,46 @@ public class TusPlugin: NSObject, FlutterPlugin, TUSDelegate {
 
         // arguments["retry"]
 
-        let uploadFile = TUSUpload(withId: fileName, andFilePathURL: fileUploadUrl, andFileType: fileType)
-        uploadFile.metadata = metadata ?? [String: String]()
-        TUSClient.shared.createOrResume(forUpload: uploadFile, withCustomHeaders: headers)
+        // if currentUploads does not contain "fileName as id" then create new tusupload object
+        var upload: TUSUpload
+        if (TUSClient.shared.currentUploads?.contains(where: {$0.id == fileName}) ?? false) {
+            upload = TUSClient.shared.currentUploads!.first(where: {$0.id == fileName})!
+            upload.status = .paused
+        } else {
+            upload = TUSUpload(withId: fileName, andFilePathURL: fileUploadUrl, andFileType: fileType)
+        }
+
+        upload.metadata = metadata ?? [String: String]()
+        TUSClient.shared.createOrResume(forUpload: upload, withCustomHeaders: headers)
         result(["inProgress": "true"])
+    }
+}
+
+extension TusPlugin: TUSDelegate {
+    public func TUSProgress(bytesUploaded uploaded: Int, bytesRemaining remaining: Int) {
+        var a = [String: String]()
+        a["bytesWritten"] = String(uploaded)
+        a["bytesTotal"] = String(remaining) // Misnaming in TUSKit v2.0.0 release, "remaining" is effectively "total"
+        a["endpointUrl"] = self.configuredEndpointUrl
+
+        self.channel.invokeMethod("progressBlock", arguments: a)
+    }
+
+
+    public func TUSSuccess(forUpload upload: TUSUpload) {
+        var a = [String: String]()
+        a["endpointUrl"] = self.configuredEndpointUrl
+        a["resultUrl"] = upload.uploadLocationURL?.absoluteString
+
+        self.channel.invokeMethod("resultBlock", arguments: a)
+        // result(a) ???
+    }
+
+    public func TUSFailure(forUpload upload: TUSUpload?, withResponse response: TUSResponse?, andError error: Error?) {
+        var a = [String: String]()
+        a["endpointUrl"] = self.configuredEndpointUrl
+        a["error"] = error as? String
+
+        self.channel.invokeMethod("failureBlock", arguments: a)
     }
 }
