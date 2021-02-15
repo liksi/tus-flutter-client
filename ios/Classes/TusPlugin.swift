@@ -32,7 +32,8 @@ public class TusPlugin: NSObject, FlutterPlugin {
     public func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) -> Bool {
         NSLog("Session with identifier: %@ called application delegate in flutter tus plugin", identifier)
         // TODO: handle pause when killed
-        return true
+        completionHandler()
+        return true // TODO: check if this boolean means that this delegate had handle the session
     }
 
     // MARK: Flutter method call handling
@@ -78,16 +79,25 @@ public class TusPlugin: NSObject, FlutterPlugin {
 
         if (backgroundEnabled) {
             self.urlSessionConfiguration = URLSessionConfiguration.background(withIdentifier: TusPlugin.channelName)
+
+            // TODO: check following properties
+//            if #available(iOS 13.0, *) {
+//                self.urlSessionConfiguration?.allowsExpensiveNetworkAccess = true
+//                self.urlSessionConfiguration?.allowsConstrainedNetworkAccess = true
+//            }
+
+            if #available(iOS 9.0, *) {
+                self.urlSessionConfiguration?.shouldUseExtendedBackgroundIdleMode = true
+            }
         } else {
             self.urlSessionConfiguration = URLSessionConfiguration.default
         }
 
         self.urlSessionConfiguration?.httpMaximumConnectionsPerHost = 1
-        self.urlSessionConfiguration?.allowsCellularAccess = true
         self.urlSessionConfiguration?.sessionSendsLaunchEvents = true
         self.urlSessionConfiguration?.allowsCellularAccess = allowsCellularAccess
         if #available(iOS 11.0, *) {
-            self.urlSessionConfiguration?.waitsForConnectivity = true
+            self.urlSessionConfiguration?.waitsForConnectivity = true // TODO: check this (and the associated delegate method)
         }
     }
 
@@ -124,7 +134,6 @@ public class TusPlugin: NSObject, FlutterPlugin {
         var upload: TUSUpload
         if (TUSClient.shared.currentUploads?.contains(where: {$0.id == fileName}) ?? false) {
             upload = TUSClient.shared.currentUploads!.first(where: {$0.id == fileName})!
-            upload.status = .paused
         } else {
             upload = TUSUpload(withId: fileName, andFilePathURL: fileUploadUrl, andFileType: fileType)
         }
@@ -158,7 +167,7 @@ extension TusPlugin: TUSDelegate {
     public func TUSFailure(forUpload upload: TUSUpload?, withResponse response: TUSResponse?, andError error: Error?) {
         var a = [String: String]()
         a["endpointUrl"] = self.configuredEndpointUrl
-        a["error"] = error as? String
+        a["error"] = error as? String ?? response?.message ?? "No message for failure"
 
         self.channel.invokeMethod("failureBlock", arguments: a)
     }

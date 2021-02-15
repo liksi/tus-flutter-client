@@ -31,17 +31,17 @@ class Tus {
   int retry = -1;
 
   // [iOS-only] Allows cellular access for uploads.
-  bool allowsCellularAccess = true;
+  bool allowsCellularAccess;
   // [iOS-only] Configure for background tasks
-  bool enableBackground = true;
+  bool enableBackground;
 
   Tus(this.endpointUrl,
       {this.onProgress,
       this.onComplete,
       this.onError,
       this.headers,
-      this.allowsCellularAccess,
-      this.enableBackground}) {
+      this.allowsCellularAccess = true,
+      this.enableBackground = true}) {
     assert(endpointUrl != null);
     _channel.setMethodCallHandler(this.handler);
   }
