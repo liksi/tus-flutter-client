@@ -79,6 +79,7 @@ public class TusPlugin: NSObject, FlutterPlugin {
 
         if (backgroundEnabled) {
             self.urlSessionConfiguration = URLSessionConfiguration.background(withIdentifier: TusPlugin.channelName)
+            self.urlSessionConfiguration?.httpMaximumConnectionsPerHost = 1
 
             // TODO: check following properties
 //            if #available(iOS 13.0, *) {
@@ -93,7 +94,6 @@ public class TusPlugin: NSObject, FlutterPlugin {
             self.urlSessionConfiguration = URLSessionConfiguration.default
         }
 
-        self.urlSessionConfiguration?.httpMaximumConnectionsPerHost = 1
         self.urlSessionConfiguration?.sessionSendsLaunchEvents = true
         self.urlSessionConfiguration?.allowsCellularAccess = allowsCellularAccess
         if #available(iOS 11.0, *) {
@@ -134,6 +134,11 @@ public class TusPlugin: NSObject, FlutterPlugin {
         var upload: TUSUpload
         if (TUSClient.shared.currentUploads?.contains(where: {$0.id == fileName}) ?? false) {
             upload = TUSClient.shared.currentUploads!.first(where: {$0.id == fileName})!
+            if (upload.status == .error) { // TODO: switch on upload state
+                TUSClient.shared.pause(forUpload: upload)
+            } else if (upload.status == .uploading) {
+                TUSClient.shared.pause(forUpload: upload)
+            }
         } else {
             upload = TUSUpload(withId: fileName, andFilePathURL: fileUploadUrl, andFileType: fileType)
         }
