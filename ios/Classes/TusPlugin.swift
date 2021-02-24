@@ -21,20 +21,13 @@ public class TusPlugin: NSObject, FlutterPlugin {
         let instance = TusPlugin(channel)
 
         registrar.addMethodCallDelegate(instance, channel: channel)
-        registrar.addApplicationDelegate(instance) // TODO: check if this can be used to enable background without modifying main application
+//        registrar.addApplicationDelegate(instance) // TODO: check if this can be used to enable background without modifying main application
     }
 
     init(_ channel: FlutterMethodChannel) {
         self.channel = channel
     }
 
-    // MARK: ApplicationDelegate
-    public func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) -> Bool {
-        NSLog("Session with identifier: %@ called application delegate in flutter tus plugin", identifier)
-        // TODO: handle pause when killed
-        completionHandler()
-        return true // TODO: check if this boolean means that this delegate had handle the session
-    }
 
     // MARK: Flutter method call handling
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) -> Void {
