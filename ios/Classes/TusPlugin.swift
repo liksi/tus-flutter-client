@@ -123,14 +123,24 @@ public class TusPlugin: NSObject, FlutterPlugin {
 
         // arguments["retry"]
 
-        // if currentUploads does not contain "fileName as id" then create new tusupload object
         var upload: TUSUpload
+
+        // if currentUploads does not contain "fileName as id" then create new tusupload object
         if (TUSClient.shared.currentUploads?.contains(where: {$0.id == fileName}) ?? false) {
             upload = TUSClient.shared.currentUploads!.first(where: {$0.id == fileName})!
-            if (upload.status == .error) { // TODO: switch on upload state
-                TUSClient.shared.pause(forUpload: upload)
-            } else if (upload.status == .uploading) {
-                TUSClient.shared.pause(forUpload: upload)
+            switch upload.status {
+                case .new, .paused, .created, .enqueued:
+                    break
+                case .error: // TODO: check for .uploading status (should happen only in few specific hard to debug cases, e. g. when background session launched but delegate not called)
+                    TUSClient.shared.pause(forUpload: upload) { pausedUpload in
+                        pausedUpload.metadata = metadata ?? [String: String]()
+                        TUSClient.shared.createOrResume(forUpload: pausedUpload, withCustomHeaders: headers)
+                        result(["inProgress": "true"])
+                    }
+                    return
+                default:
+                    result(["error": "Upload exists and has unhandled status \(upload.status?.rawValue ?? "unknown")"])
+                    return
             }
         } else {
             upload = TUSUpload(withId: fileName, andFilePathURL: fileUploadUrl, andFileType: fileType)
