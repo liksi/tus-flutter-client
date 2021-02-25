@@ -38,9 +38,36 @@ public class TusPlugin: NSObject, FlutterPlugin {
             self.initWithEndpoint(call, result)
         case "createUploadFromFile":
             self.createUploadFromFile(call, result)
+        case "retryUpload":
+            self.retryUploadWithId(call, result)
         default:
             result(FlutterMethodNotImplemented)
         }
+    }
+
+    private func retryUploadWithId(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+        let arguments = call.arguments as! [String: Any?]
+
+        guard let uploadId = arguments["uploadId"] as? String else {
+            result(["error": "Argument missing", "reason": "Argument uploadId is missing"])
+            return
+        }
+
+        if (TUSClient.shared.currentUploads?.contains(where: {$0.id == uploadId}) ?? false) {
+            let upload = TUSClient.shared.currentUploads!.first(where: {$0.id == uploadId})!
+
+            if let headers = arguments["headers"] as? [String: String] {
+                upload.customHeaders = headers
+            }
+
+            TUSClient.shared.retry(forUpload: upload)
+
+            result(["inProgress": "true"])
+            return
+        }
+
+        result(["error": "Upload not found", "reason": "Upload does not exist in client"])
+        return
     }
 
     private func initWithEndpoint(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
@@ -75,10 +102,10 @@ public class TusPlugin: NSObject, FlutterPlugin {
             self.urlSessionConfiguration?.httpMaximumConnectionsPerHost = 1
 
             // TODO: check following properties
-//            if #available(iOS 13.0, *) {
-//                self.urlSessionConfiguration?.allowsExpensiveNetworkAccess = true
-//                self.urlSessionConfiguration?.allowsConstrainedNetworkAccess = true
-//            }
+            if #available(iOS 13.0, *) {
+                self.urlSessionConfiguration?.allowsExpensiveNetworkAccess = true
+                self.urlSessionConfiguration?.allowsConstrainedNetworkAccess = true
+            }
 
             if #available(iOS 9.0, *) {
                 self.urlSessionConfiguration?.shouldUseExtendedBackgroundIdleMode = true
@@ -89,34 +116,39 @@ public class TusPlugin: NSObject, FlutterPlugin {
 
         self.urlSessionConfiguration?.sessionSendsLaunchEvents = true
         self.urlSessionConfiguration?.allowsCellularAccess = allowsCellularAccess
+        
         if #available(iOS 11.0, *) {
-            self.urlSessionConfiguration?.waitsForConnectivity = true // TODO: check this (and the associated delegate method)
+            // TODO: check this (and the associated delegate method)
+            // NOTE: delegate taskIsWaitingForConnectivity is never called for background tasks
+            self.urlSessionConfiguration?.waitsForConnectivity = true
         }
     }
 
     private func createUploadFromFile(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
         let arguments = call.arguments as! [String: Any?]
-        let options = arguments["options"] as? [String: Any?]
 
-        if (!self.configured) {
-            result(["error": "You must configure TUS before calling upload, use initWithEndpoint method"])
+        guard self.configured else {
+            result(["error": "Missing configuration", "reason": "You must configure TUS before calling upload, use initWithEndpoint method"])
             return
         }
 
-        let fileUploadUrlString = arguments["fileUploadUrl"] as! String
+        guard let fileUploadUrlString = arguments["fileUploadUrl"] as? String else {
+            result(["error": "Argument missing", "reason": "Argument fileUploadUrl is missing"])
+            return
+        }
         let fileUploadUrl = URL(fileURLWithPath: fileUploadUrlString)
-        let fileNameExt = fileUploadUrlString.components(separatedBy: ".")
-        guard let fileName = fileNameExt[fileNameExt.count - 2].components(separatedBy: "/").last else {
-            result(["error": "Cannot infer file name from fileUploadUrl"])
+        let fileNameExt = fileUploadUrl.lastPathComponent.components(separatedBy: ".")
+        guard let fileName = fileNameExt.first else {
+            result(["error": "Argument malformed", "reason": "Cannot infer file name from fileUploadUrl"])
             return
         }
         guard var fileType = fileNameExt.last else {
-            result(["error": "Cannot infer file extension from fileUploadUrl"])
+            result(["error": "Argument malformed", "reason": "Cannot infer file extension from fileUploadUrl"])
             return
         }
         fileType = "." + fileType
         guard let headers = arguments["headers"] as? [String: String] else { // Not mandatory anymore
-            result(["error": "You must set headers for TUS"])
+            result(["error": "Missing argument", "reason": "Argument for TUS headers is missing"])
             return
         }
         let metadata = arguments["metadata"] as? [String: String]
@@ -131,15 +163,22 @@ public class TusPlugin: NSObject, FlutterPlugin {
             switch upload.status {
                 case .new, .paused, .created, .enqueued:
                     break
-                case .error: // TODO: check for .uploading status (should happen only in few specific hard to debug cases, e. g. when background session launched but delegate not called)
+                case .error:
                     TUSClient.shared.pause(forUpload: upload) { pausedUpload in
                         pausedUpload.metadata = metadata ?? [String: String]()
                         TUSClient.shared.createOrResume(forUpload: pausedUpload, withCustomHeaders: headers)
                         result(["inProgress": "true"])
                     }
                     return
+                case .uploading: // TODO: check for .uploading status (should happen only in few specific hard to debug cases, e. g. when background session launched but delegate not called)
+                    TUSClient.shared.pause(forUpload: upload) { pausedUpload in
+                        result(["error": "Cannot handle current upload state.",
+                        "reason": "Trying to recreate a .uploading object. Use retry instead"])
+                    }
+                    return
                 default:
-                    result(["error": "Upload exists and has unhandled status \(upload.status?.rawValue ?? "unknown")"])
+                    result(["error": "Cannot handle current upload state.",
+                            "reason": "Upload exists and has unhandled status \(upload.status?.rawValue ?? "unknown")"])
                     return
             }
         } else {
@@ -178,5 +217,17 @@ extension TusPlugin: TUSDelegate {
         a["error"] = error as? String ?? response?.message ?? "No message for failure"
 
         self.channel.invokeMethod("failureBlock", arguments: a)
+    }
+
+    public func TUSAuthRequired(forUpload upload: TUSUpload?) {
+        var a = [String: String]()
+        a["endpointUrl"] = self.configuredEndpointUrl
+        a["uploadId"] = upload?.id ?? ""
+
+        if (upload == nil) {
+            a["error"] = "Auth required but no upload provided"
+        }
+
+        self.channel.invokeMethod("authRequiredBlock", arguments: a)
     }
 }

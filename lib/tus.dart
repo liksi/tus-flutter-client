@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 typedef void OnCompleteCallback(String result, Tus tus);
 typedef void OnProgressCallback(int bytesWritten, int bytesTotal, double progress, Tus tus);
 typedef void OnErrorCallback(String error, Tus tus);
+typedef void OnAuthRequiredCallback(String uploadId, Tus tus);
 
 // The Tus Flutter client.
 //
@@ -20,6 +21,7 @@ class Tus {
   OnProgressCallback onProgress;
   OnCompleteCallback onComplete;
   OnErrorCallback onError;
+  OnAuthRequiredCallback onAuthRequired;
 
   // Flag to ensure that the tus client is initialized.
   bool isInitialized = false;
@@ -54,6 +56,7 @@ class Tus {
       case "progressBlock":
       case "resultBlock":
       case "failureBlock":
+      case "authRequiredBlock":
         if (call.arguments["endpointUrl"] != endpointUrl) {
           // This method call is not meant for this client.
           return null;
@@ -86,11 +89,36 @@ class Tus {
         onError(error, this);
       }
     }
+
+    // Triggers the onAuthRequired callback if the callback is provided
+    if (call.method == "authRequiredBlock") {
+      var uploadId = call.arguments["uploadId"] ?? "";
+      if (onAuthRequired != null) {
+        onAuthRequired(uploadId, this);
+      }
+    }
   }
 
   static Future<String> get platformVersion async {
     final String version = await _channel.invokeMethod('getPlatformVersion');
     return version;
+  }
+
+  Future<void> retryUpload(String uploadId) async {
+    try {
+      var result = await _channel.invokeMethod("retryUpload", <String, dynamic>{
+        "uploadId": uploadId,
+        "headers": headers,
+      });
+
+      if (result.containsKey("error")) {
+        throw Exception("${result["error"]} { ${result["reason"]} }");
+      }
+
+      return result;
+    } catch (error) {
+      throw error;
+    }
   }
 
   // Initialize the tus client on the native side.
@@ -134,7 +162,7 @@ class Tus {
       });
 
       if (result.containsKey("error")) {
-        throw Exception("${result["error"]} { ${result["reason"]}");
+        throw Exception("${result["error"]} { ${result["reason"]} }");
       }
 
       return result;
