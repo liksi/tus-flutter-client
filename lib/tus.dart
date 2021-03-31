@@ -104,11 +104,27 @@ class Tus {
     return version;
   }
 
-  Future<void> retryUpload(String uploadId) async {
+  Future<void> retryUpload(String uploadId, String fileToUpload, {Map<String, String> metadata}) async {
+    if (!isInitialized) {
+      await initializeWithEndpoint();
+    }
+
+    // Ensures that metadata is not null by providing an empty map, if not
+    // provided by the user.
+    if (metadata == null) {
+      metadata = Map<String, String>();
+    }
+
+    var argRetry = metadata["retry"] ?? retry.toString();
+
     try {
       var result = await _channel.invokeMethod("retryUpload", <String, dynamic>{
         "uploadId": uploadId,
+        "endpointUrl": endpointUrl,
+        "fileUploadUrl": fileToUpload,
+        "retry": argRetry,
         "headers": headers,
+        "metadata": metadata,
       });
 
       if (result.containsKey("error")) {
@@ -125,6 +141,7 @@ class Tus {
   Future<Map> initializeWithEndpoint() async {
     var response = await _channel.invokeMethod("initWithEndpoint", <String, dynamic>{
       "endpointUrl": endpointUrl,
+      "headers": headers,
       "options": <String, String>{
         "allowsCellularAccess": allowsCellularAccess.toString(),
         "enableBackground": enableBackground.toString(),

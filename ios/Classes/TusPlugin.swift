@@ -47,16 +47,14 @@ public class TusPlugin: NSObject, FlutterPlugin {
 
     private func retryUploadWithId(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
         let arguments = call.arguments as! [String: Any?]
+        let newHeaders = arguments["headers"]
 
-        guard let uploadId = arguments["uploadId"] as? String else {
-            result(["error": "Argument missing", "reason": "Argument uploadId is missing"])
-            return
-        }
+        let uploadId = arguments["uploadId"] as? String
 
         if (TUSClient.shared.currentUploads?.contains(where: {$0.id == uploadId}) ?? false) {
             let upload = TUSClient.shared.currentUploads!.first(where: {$0.id == uploadId})!
 
-            if let headers = arguments["headers"] as? [String: String] {
+            if let headers = newHeaders as? [String: String] {
                 upload.customHeaders = headers
             }
 
@@ -64,27 +62,26 @@ public class TusPlugin: NSObject, FlutterPlugin {
 
             result(["inProgress": "true"])
             return
+        } else {
+            createUploadFromFile(call, result)
         }
-
-        result(["error": "Upload not found", "reason": "Upload does not exist in client"])
-        return
     }
 
     private func initWithEndpoint(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
         let arguments = call.arguments as! [String: Any?]
         let options = arguments["options"] as? [String: Any?]
+        let headers = arguments["headers"] as? [String: String] ?? [:]
 
         // TODO: rework on this section to check for existing "session"
         let endpointUrl = arguments["endpointUrl"] as! String
         if (!self.configured) {
             self.configureURLSession(options)
-            let config = TUSConfig(withUploadURLString: endpointUrl, andSessionConfig: self.urlSessionConfiguration!)
-            config.logLevel = .All // options ?
+            let config = TUSConfig(withUploadURLString: endpointUrl, andSessionConfig: self.urlSessionConfiguration!, withCustomHeaders: headers)
+            config.logLevel = .Off // options ?
             TUSClient.setup(with: config)
             TUSClient.shared.delegate = self
             // TODO: configurable chunksize
             // TUSClient.shared.chunkSize = // options ?
-            TUSClient.shared.status = .ready
             self.configuredEndpointUrl = endpointUrl
             self.configured = true
         }
@@ -193,6 +190,9 @@ public class TusPlugin: NSObject, FlutterPlugin {
 
 extension TusPlugin: TUSDelegate {
     public func TUSProgress(bytesUploaded uploaded: Int, bytesRemaining remaining: Int) {
+    }
+
+    public func TUSProgress(forUpload upload: TUSUpload, bytesUploaded uploaded: Int, bytesRemaining remaining: Int) {
         var a = [String: String]()
         a["bytesWritten"] = String(uploaded)
         a["bytesTotal"] = String(remaining) // Misnaming in TUSKit v2.0.0 release, "remaining" is effectively "total"
@@ -200,7 +200,6 @@ extension TusPlugin: TUSDelegate {
 
         self.channel.invokeMethod("progressBlock", arguments: a)
     }
-
 
     public func TUSSuccess(forUpload upload: TUSUpload) {
         var a = [String: String]()
