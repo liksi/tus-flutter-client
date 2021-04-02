@@ -93,7 +93,7 @@ public class TusPlugin implements FlutterPlugin, MethodCallHandler {
             HashMap<String, String> a = new HashMap<>();
             a.put("endpointUrl", endpointUrl);
             result.success(a);
-        } else if (call.method.equals("createUploadFromFile")) {
+        } else if (call.method.equals("createUploadFromFile") || call.method.equals("retryUpload")) {
 
             HashMap<String, Object> arguments = (HashMap<String, Object>) call.arguments;
 
