@@ -1,5 +1,6 @@
 import Flutter
 import TUSKit
+import os
 
 public class TusPlugin: NSObject, FlutterPlugin {
     private static let channelName = "io.tus.flutter_service"
@@ -52,6 +53,13 @@ public class TusPlugin: NSObject, FlutterPlugin {
         let uploadId = arguments["uploadId"] as? String
 
         if (TUSClient.shared.currentUploads?.contains(where: {$0.id == uploadId}) ?? false) {
+            let message = "Retry existing upload from TUS flutter plugin"
+            if #available(iOS 10.0, *) {
+                let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
+                os_log("%{public}@", log: log, type: OSLogType.default, message)
+            } else {
+                print(message)
+            }
             let upload = TUSClient.shared.currentUploads!.first(where: {$0.id == uploadId})!
 
             if let headers = newHeaders as? [String: String] {
@@ -63,6 +71,13 @@ public class TusPlugin: NSObject, FlutterPlugin {
             result(["inProgress": "true"])
             return
         } else {
+            let message = "Create new upload from retry call from TUS flutter plugin"
+            if #available(iOS 10.0, *) {
+                let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
+                os_log("%{public}@", log: log, type: OSLogType.default, message)
+            } else {
+                print(message)
+            }
             createUploadFromFile(call, result)
         }
     }
@@ -72,12 +87,27 @@ public class TusPlugin: NSObject, FlutterPlugin {
         let options = arguments["options"] as? [String: Any?]
         let headers = arguments["headers"] as? [String: String] ?? [:]
 
+        let message = "Init TUSKit from TUS flutter plugin"
+        if #available(iOS 10.0, *) {
+            let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
+            os_log("%{public}@", log: log, type: OSLogType.default, message)
+        } else {
+            print(message)
+        }
+
         // TODO: rework on this section to check for existing "session"
         let endpointUrl = arguments["endpointUrl"] as! String
         if (!self.configured) {
+            let message = "Configuring TUSKit from TUS flutter plugin"
+            if #available(iOS 10.0, *) {
+                let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
+                os_log("%{public}@", log: log, type: OSLogType.default, message)
+            } else {
+                print(message)
+            }
             self.configureURLSession(options)
             let config = TUSConfig(withUploadURLString: endpointUrl, andSessionConfig: self.urlSessionConfiguration!, withCustomHeaders: headers)
-            config.logLevel = .Off // options ?
+            config.logLevel = .All // options ?
             TUSClient.setup(with: config)
             TUSClient.shared.delegate = self
             // TODO: configurable chunksize
@@ -122,6 +152,14 @@ public class TusPlugin: NSObject, FlutterPlugin {
     }
 
     private func createUploadFromFile(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+        let message = "Create new upload from TUS flutter plugin"
+        if #available(iOS 10.0, *) {
+            let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
+            os_log("%{public}@", log: log, type: OSLogType.default, message)
+        } else {
+            print(message)
+        }
+
         let arguments = call.arguments as! [String: Any?]
 
         guard self.configured else {
@@ -202,9 +240,18 @@ extension TusPlugin: TUSDelegate {
     }
 
     public func TUSSuccess(forUpload upload: TUSUpload) {
+        
         var a = [String: String]()
         a["endpointUrl"] = self.configuredEndpointUrl
         a["resultUrl"] = upload.uploadLocationURL?.absoluteString
+
+        let message = "TUSSuccess delegate called from TUS flutter plugin with arguments: \(a)"
+        if #available(iOS 10.0, *) {
+            let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
+            os_log("%{public}@", log: log, type: OSLogType.default, message)
+        } else {
+            print(message)
+        }
 
         self.channel.invokeMethod("resultBlock", arguments: a)
         // result(a) ???
@@ -214,6 +261,14 @@ extension TusPlugin: TUSDelegate {
         var a = [String: String]()
         a["endpointUrl"] = self.configuredEndpointUrl
         a["error"] = error as? String ?? response?.message ?? "No message for failure"
+
+        let message = "TUSFailure delegate called from TUS flutter plugin with arguments: \(a)"
+        if #available(iOS 10.0, *) {
+            let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
+            os_log("%{public}@", log: log, type: OSLogType.default, message)
+        } else {
+            print(message)
+        }
 
         self.channel.invokeMethod("failureBlock", arguments: a)
     }
@@ -225,6 +280,14 @@ extension TusPlugin: TUSDelegate {
 
         if (upload == nil) {
             a["error"] = "Auth required but no upload provided"
+        }
+
+        let message = "TUSAuthRequired delegate called from TUS flutter plugin with arguments: \(a)"
+        if #available(iOS 10.0, *) {
+            let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
+            os_log("%{public}@", log: log, type: OSLogType.default, message)
+        } else {
+            print(message)
         }
 
         self.channel.invokeMethod("authRequiredBlock", arguments: a)
