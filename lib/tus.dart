@@ -137,6 +137,18 @@ class Tus {
     }
   }
 
+  Future<void> stopUpload({String uploadId, String fileBeingUploaded}) async {
+    var result = await _channel.invokeMethod("stopAndRemoveUpload", {
+      "uploadId": uploadId,
+      "fileUploadUrl": fileBeingUploaded
+    });
+
+    if (result.containsKey("error")) {
+      throw Exception("Error stopping upload $uploadId : ${result["error"]} { ${result["reason"]} }");
+    }
+    return result;
+  }
+
   // Initialize the tus client on the native side.
   Future<Map> initializeWithEndpoint() async {
     var response = await _channel.invokeMethod("initWithEndpoint", <String, dynamic>{

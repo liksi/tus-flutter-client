@@ -41,6 +41,7 @@ public class TusPlugin implements FlutterPlugin, MethodCallHandler {
     private SharedPreferences sharedPreferences;
     private HashMap<String, TusClient> clients = new HashMap<>();
     private MethodChannel methodChannel;
+    private HashMap<String, HandleFileUpload> uploads = new HashMap();
 
     // This static function is optional and equivalent to onAttachedToEngine. It supports the old
     // pre-Flutter-1.12 Android projects. You are encouraged to continue supporting
@@ -72,7 +73,8 @@ public class TusPlugin implements FlutterPlugin, MethodCallHandler {
     public void onMethodCall(@NonNull MethodCall call, @NonNull Result result) {
         if (call.method.equals("getPlatformVersion")) {
             result.success("Android " + android.os.Build.VERSION.RELEASE);
-        } else if (call.method.equals("initWithEndpoint")) {
+        }
+        else if (call.method.equals("initWithEndpoint")) {
             HashMap<String, Object> arguments = (HashMap<String, Object>) call.arguments;
 
             String endpointUrl = (String) arguments.get("endpointUrl");
@@ -93,7 +95,8 @@ public class TusPlugin implements FlutterPlugin, MethodCallHandler {
             HashMap<String, String> a = new HashMap<>();
             a.put("endpointUrl", endpointUrl);
             result.success(a);
-        } else if (call.method.equals("createUploadFromFile") || call.method.equals("retryUpload")) {
+        }
+        else if (call.method.equals("createUploadFromFile") || call.method.equals("retryUpload")) {
 
             HashMap<String, Object> arguments = (HashMap<String, Object>) call.arguments;
 
@@ -128,6 +131,7 @@ public class TusPlugin implements FlutterPlugin, MethodCallHandler {
             }
 
             HandleFileUpload b = new HandleFileUpload(result, client, fileUploadUrl, methodChannel, endpointUrl, metadata);
+            uploads.put(metadata.get("uuid"), b);
             try {
                 b.execute();
             } catch (Exception e) {
@@ -135,7 +139,11 @@ public class TusPlugin implements FlutterPlugin, MethodCallHandler {
                 e.printStackTrace(new PrintWriter(errors));
                 result.error("Exception", e.getMessage(), errors.toString());
             }
-        } else {
+        }
+        else if (call.method.equals("stopAndRemoveUpload")) {
+            stopAndRemoveUpload(call, result);
+        }
+        else {
             result.notImplemented();
         }
     }
@@ -144,6 +152,25 @@ public class TusPlugin implements FlutterPlugin, MethodCallHandler {
     public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
         for (TusClient client : clients.values()) {
             client.disableRemoveFingerprintOnSuccess();
+        }
+    }
+
+    private void stopAndRemoveUpload(@NonNull MethodCall call, @NonNull Result result) {
+        HashMap<String, Object> arguments = (HashMap<String, Object>) call.arguments;
+
+        String uploadId = (String) arguments.get("uploadId");
+        if (uploadId.isEmpty()) {
+            result.error("InvalidUploadId", "Upload id is invalid.", "Provide the id of a running upload.");
+            return;
+        }
+
+        HandleFileUpload uploadToStop = uploads.get(uploadId);
+        if (uploadToStop != null) {
+            uploadToStop.cancel(true);
+            final HashMap<String, String> s = new HashMap<>();
+            result.success(s);
+        } else {
+            result.error("Upload not found", "Could not find upload with given id", "Provide the id of an existing upload.");
         }
     }
 }
@@ -195,6 +222,10 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
                 // a connection to the remote server and doing the uploading.
                 final TusUploader uploader = client.resumeOrCreateUpload(upload);
 
+                if (isCancelled()) {
+                    final HashMap<String, String> s = new HashMap<>();
+                    result.success(s);
+                }
                 // Upload the file as long as data is available. Once the
                 // file has been fully uploaded the method will return -1
                 do {
@@ -215,7 +246,7 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
                             methodChannel.invokeMethod("progressBlock", a);
                         }
                     });
-                } while (uploader.uploadChunk() > -1);
+                } while (!isCancelled() && uploader.uploadChunk() > -1);
 
                 uploader.finish();
 
