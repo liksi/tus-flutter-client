@@ -41,9 +41,40 @@ public class TusPlugin: NSObject, FlutterPlugin {
             self.createUploadFromFile(call, result)
         case "retryUpload":
             self.retryUploadWithId(call, result)
+        case "stopAndRemoveUpload":
+            self.stopUpload(call, result)
         default:
             result(FlutterMethodNotImplemented)
         }
+    }
+
+    private func stopUpload(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+       let arguments = call.arguments as! [String: Any?]
+       let uploadId = arguments["uploadId"] as? String
+
+       if (uploadId == nil) {
+           let message = "Missing uploadId argument"
+           result(["error": message])
+           return
+       }
+
+       let uploadToStop = TUSClient.shared.currentUploads?.first(where: {$0.id == uploadId})
+       if (uploadToStop == nil) {
+           let message = "Could not find upload with id \(uploadId!)"
+           result(["error": message])
+           return
+       }
+       if (uploadToStop!.status == .canceled) {
+        let message : String = "Upload with id \(uploadId!) is already cancelled";
+           result(["error": message])
+           return
+       }
+       if (uploadToStop!.status != .canceled) {
+          TUSClient.shared.cancel(forUpload: uploadToStop!) { pausedUpload in
+             TUSClient.shared.cleanUp(forUpload: pausedUpload)
+          }
+          result(["canceled": "true"])
+       }
     }
 
     private func retryUploadWithId(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
