@@ -118,7 +118,7 @@ public class TusPlugin: NSObject, FlutterPlugin {
         let options = arguments["options"] as? [String: Any?]
         let headers = arguments["headers"] as? [String: String] ?? [:]
 
-        let message = "Init TUSKit from TUS flutter plugin"
+        let message = "Init TUSKit from TUS flutter plugin - With headers \(headers)"
         if #available(iOS 10.0, *) {
             let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
             os_log("%{public}@", log: log, type: OSLogType.default, message)
@@ -174,7 +174,7 @@ public class TusPlugin: NSObject, FlutterPlugin {
 
         self.urlSessionConfiguration?.sessionSendsLaunchEvents = true
         self.urlSessionConfiguration?.allowsCellularAccess = allowsCellularAccess
-        
+
         if #available(iOS 11.0, *) {
             // TODO: check this (and the associated delegate method)
             // NOTE: delegate taskIsWaitingForConnectivity is never called for background tasks
@@ -262,21 +262,23 @@ extension TusPlugin: TUSDelegate {
     }
 
     public func TUSProgress(forUpload upload: TUSUpload, bytesUploaded uploaded: Int, bytesRemaining remaining: Int) {
-        var a = [String: String]()
-        a["bytesWritten"] = String(uploaded)
-        a["bytesTotal"] = String(remaining) // Misnaming in TUSKit v2.0.0 release, "remaining" is effectively "total"
-        a["endpointUrl"] = self.configuredEndpointUrl
+        var args = [String: String]()
+        args["bytesWritten"] = String(uploaded)
+        args["bytesTotal"] = String(remaining) // Misnaming in TUSKit v2.0.0 release, "remaining" is effectively "total"
+        args["endpointUrl"] = self.configuredEndpointUrl
+        args["uploadId"] = upload.id
 
-        self.channel.invokeMethod("progressBlock", arguments: a)
+        self.channel.invokeMethod("progressBlock", arguments: args)
     }
 
     public func TUSSuccess(forUpload upload: TUSUpload) {
-        
-        var a = [String: String]()
-        a["endpointUrl"] = self.configuredEndpointUrl
-        a["resultUrl"] = upload.uploadLocationURL?.absoluteString
 
-        let message = "TUSSuccess delegate called from TUS flutter plugin with arguments: \(a)"
+        var args = [String: String]()
+        args["endpointUrl"] = self.configuredEndpointUrl
+        args["resultUrl"] = upload.uploadLocationURL?.absoluteString
+        args["uploadId"] = upload.id
+
+        let message = "TUSSuccess delegate called from TUS flutter plugin with arguments: \(args)"
         if #available(iOS 10.0, *) {
             let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
             os_log("%{public}@", log: log, type: OSLogType.default, message)
@@ -284,16 +286,18 @@ extension TusPlugin: TUSDelegate {
             print(message)
         }
 
-        self.channel.invokeMethod("resultBlock", arguments: a)
-        // result(a) ???
+        self.channel.invokeMethod("resultBlock", arguments: args)
+        // result(args) ???
     }
 
     public func TUSFailure(forUpload upload: TUSUpload?, withResponse response: TUSResponse?, andError error: Error?) {
-        var a = [String: String]()
-        a["endpointUrl"] = self.configuredEndpointUrl
-        a["error"] = error as? String ?? response?.message ?? "No message for failure"
+        var args = [String: String]()
+        args["endpointUrl"] = self.configuredEndpointUrl
+        args["error"] = error as? String ?? response?.message ?? "No message for failure"
+        args["uploadId"] = upload?.id ?? ""
 
-        let message = "TUSFailure delegate called from TUS flutter plugin with arguments: \(a)"
+
+        let message = "TUSFailure delegate called from TUS flutter plugin with arguments: \(args)"
         if #available(iOS 10.0, *) {
             let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
             os_log("%{public}@", log: log, type: OSLogType.default, message)
@@ -301,19 +305,19 @@ extension TusPlugin: TUSDelegate {
             print(message)
         }
 
-        self.channel.invokeMethod("failureBlock", arguments: a)
+        self.channel.invokeMethod("failureBlock", arguments: args)
     }
 
     public func TUSAuthRequired(forUpload upload: TUSUpload?) {
-        var a = [String: String]()
-        a["endpointUrl"] = self.configuredEndpointUrl
-        a["uploadId"] = upload?.id ?? ""
+        var args = [String: String]()
+        args["endpointUrl"] = self.configuredEndpointUrl
+        args["uploadId"] = upload?.id ?? ""
 
         if (upload == nil) {
-            a["error"] = "Auth required but no upload provided"
+            args["error"] = "Auth required but no upload provided"
         }
 
-        let message = "TUSAuthRequired delegate called from TUS flutter plugin with arguments: \(a)"
+        let message = "TUSAuthRequired delegate called from TUS flutter plugin with arguments: \(args)"
         if #available(iOS 10.0, *) {
             let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
             os_log("%{public}@", log: log, type: OSLogType.default, message)
@@ -321,6 +325,6 @@ extension TusPlugin: TUSDelegate {
             print(message)
         }
 
-        self.channel.invokeMethod("authRequiredBlock", arguments: a)
+        self.channel.invokeMethod("authRequiredBlock", arguments: args)
     }
 }

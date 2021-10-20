@@ -125,15 +125,10 @@ public class TusPlugin implements FlutterPlugin, MethodCallHandler {
                 metadata = (HashMap<String, String>) arguments.get("metadata");
             }
 
-            int retryCount = -1;
-            if (arguments.containsKey("retry")) {
-                retryCount = Integer.parseInt(String.valueOf(arguments.get("retry")));
-            }
-
-            HandleFileUpload b = new HandleFileUpload(result, client, fileUploadUrl, methodChannel, endpointUrl, metadata);
-            uploads.put(metadata.get("uuid"), b);
+            HandleFileUpload newUpload = new HandleFileUpload(result, client, fileUploadUrl, methodChannel, endpointUrl, metadata);
+            uploads.put(newUpload.id, newUpload);
             try {
-                b.execute();
+                newUpload.execute();
             } catch (Exception e) {
                 StringWriter errors = new StringWriter();
                 e.printStackTrace(new PrintWriter(errors));
@@ -183,6 +178,7 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
     final String endpointUrl;
     final HashMap<String, String> metadata;
     final Result result;
+    final String id;
 
     HandleFileUpload(Result result, TusClient client, String uploadFileUrl, MethodChannel methodChannel, String endpointUrl, HashMap<String, String> metadata) {
         this.result = result;
@@ -191,6 +187,7 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
         this.methodChannel = methodChannel;
         this.endpointUrl = endpointUrl;
         this.metadata = metadata;
+        this.id = metadata.get("uuid");
     }
 
     @Override
@@ -235,30 +232,32 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
 
                     System.out.printf("Upload at %06.2f%%.\n", progress);
 
-                    final HashMap<String, String> a = new HashMap<>();
-                    a.put("endpointUrl", endpointUrl);
-                    a.put("bytesWritten", Long.toString(bytesUploaded));
-                    a.put("bytesTotal", Long.toString(totalBytes));
+                    final HashMap<String, String> args = new HashMap<>();
+                    args.put("endpointUrl", endpointUrl);
+                    args.put("bytesWritten", Long.toString(bytesUploaded));
+                    args.put("bytesTotal", Long.toString(totalBytes));
+                    args.put("uploadId", id);
                     new Handler(Looper.getMainLooper()).post(new Runnable() {
                         @Override
                         public void run() {
                             // Call the desired channel message here.
-                            methodChannel.invokeMethod("progressBlock", a);
+                            methodChannel.invokeMethod("progressBlock", args);
                         }
                     });
                 } while (!isCancelled() && uploader.uploadChunk() > -1);
 
                 uploader.finish();
 
-                final HashMap<String, String> s = new HashMap<>();
-                s.put("endpointUrl", endpointUrl);
-                s.put("resultUrl", uploader.getUploadURL().toString());
+                final HashMap<String, String> args = new HashMap<>();
+                args.put("endpointUrl", endpointUrl);
+                args.put("resultUrl", uploader.getUploadURL().toString());
+                args.put("uploadId", id);
                 new Handler(Looper.getMainLooper()).post(new Runnable() {
                     @Override
                     public void run() {
                         // Call the desired channel message here.
-                        methodChannel.invokeMethod("resultBlock", s);
-                        result.success(s); // Check if needed on iOS side
+                        methodChannel.invokeMethod("resultBlock", args);
+                        result.success(args); // Check if needed on iOS side
                     }
                 });
             }
@@ -271,12 +270,15 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
             return a;
         } catch (ProtocolException e) {
             System.out.println(e.getMessage());
+            StringWriter errors = new StringWriter();
+            e.printStackTrace(new PrintWriter(errors));
+
             final HashMap<String, String> errorMap = new HashMap<>();
             errorMap.put("endpointUrl", endpointUrl);
             errorMap.put("error", e.getMessage());
-            StringWriter errors = new StringWriter();
-            e.printStackTrace(new PrintWriter(errors));
             errorMap.put("reason", errors.toString());
+            errorMap.put("uploadId", id);
+
 
             new Handler(Looper.getMainLooper()).post(new Runnable() {
                 @Override
@@ -289,12 +291,13 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
 
             return errorMap;
         } catch (IOException e) {
+            StringWriter errors = new StringWriter();
+            e.printStackTrace(new PrintWriter(errors));
+
             final HashMap<String, String> errorMap = new HashMap<>();
             errorMap.put("endpointUrl", endpointUrl);
             errorMap.put("error", e.getMessage());
-
-            StringWriter errors = new StringWriter();
-            e.printStackTrace(new PrintWriter(errors));
+            errorMap.put("uploadId", id);
             errorMap.put("reason", errors.toString());
 
             new Handler(Looper.getMainLooper()).post(new Runnable() {
@@ -309,13 +312,14 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
             return errorMap;
 
         } catch (Exception e) {
+            StringWriter errors = new StringWriter();
+            e.printStackTrace(new PrintWriter(errors));
+
             final HashMap<String, String> errorMap = new HashMap<>();
             errorMap.put("endpointUrl", endpointUrl);
             errorMap.put("error", e.getMessage());
-
-            StringWriter errors = new StringWriter();
-            e.printStackTrace(new PrintWriter(errors));
             errorMap.put("reason", errors.toString());
+            errorMap.put("uploadId", id);
 
             new Handler(Looper.getMainLooper()).post(new Runnable() {
                 @Override

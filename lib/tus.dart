@@ -4,10 +4,10 @@ import 'dart:core';
 
 import 'package:flutter/services.dart';
 
-typedef void OnCompleteCallback(String result, Tus tus);
-typedef void OnProgressCallback(int bytesWritten, int bytesTotal, double progress, Tus tus);
-typedef void OnErrorCallback(String error, Tus tus);
-typedef void OnAuthRequiredCallback(String uploadId, Tus tus);
+typedef void OnCompleteCallback(String result, String uploadId);
+typedef void OnProgressCallback(int bytesWritten, int bytesTotal, double progress, String uploadId);
+typedef void OnErrorCallback(String error, String uploadId);
+typedef void OnAuthRequiredCallback(String uploadId);
 
 // The Tus Flutter client.
 //
@@ -68,25 +68,30 @@ class Tus {
     if (call.method == "progressBlock") {
       var bytesWritten = int.tryParse(call.arguments["bytesWritten"]);
       var bytesTotal = int.tryParse(call.arguments["bytesTotal"]);
+      var uploadId = call.arguments["uploadId"];
+
       if (onProgress != null) {
         double progress = bytesWritten / bytesTotal;
-        onProgress(bytesWritten, bytesTotal, progress, this);
+        onProgress(bytesWritten, bytesTotal, progress, uploadId);
       }
     }
 
     // Trigger the onComplete callback if the callback is provided.
     if (call.method == "resultBlock") {
       var resultUrl = call.arguments["resultUrl"];
+      var uploadId = call.arguments["uploadId"];
       if (onComplete != null) {
-        onComplete(resultUrl, this);
+        onComplete(resultUrl, uploadId);
       }
     }
 
     // Triggers the onError callback if the callback is provided.
     if (call.method == "failureBlock") {
       var error = call.arguments["error"] ?? "";
+      var uploadId = call.arguments["uploadId"] ?? "";
+
       if (onError != null) {
-        onError(error, this);
+        onError(error, uploadId);
       }
     }
 
@@ -94,7 +99,7 @@ class Tus {
     if (call.method == "authRequiredBlock") {
       var uploadId = call.arguments["uploadId"] ?? "";
       if (onAuthRequired != null) {
-        onAuthRequired(uploadId, this);
+        onAuthRequired(uploadId);
       }
     }
   }
