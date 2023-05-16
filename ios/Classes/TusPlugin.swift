@@ -261,9 +261,10 @@ extension TusPlugin: TUSDelegate {
     public func TUSProgress(bytesUploaded uploaded: Int, bytesRemaining remaining: Int) {
     }
 
-    public func TUSProgress(forUpload upload: TUSUpload, bytesUploaded uploaded: Int, bytesRemaining remaining: Int) {
+    public func TUSProgress(forUpload upload: TUSUpload, bytesUploaded uploaded: Int, bytesJustUploaded justUploaded: Int, bytesRemaining remaining: Int) {
         var args = [String: String]()
         args["bytesWritten"] = String(uploaded)
+        args["bytesJustWritten"] = String(justUploaded)
         args["bytesTotal"] = String(remaining) // Misnaming in TUSKit v2.0.0 release, "remaining" is effectively "total"
         args["endpointUrl"] = self.configuredEndpointUrl
         args["uploadId"] = upload.id

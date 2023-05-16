@@ -5,7 +5,7 @@ import 'dart:core';
 import 'package:flutter/services.dart';
 
 typedef void OnCompleteCallback(String result, String uploadId);
-typedef void OnProgressCallback(int bytesWritten, int bytesTotal, double progress, String uploadId);
+typedef void OnProgressCallback(int bytesWritten, int bytesJustWritten, int bytesTotal, double progress, String uploadId);
 typedef void OnErrorCallback(String error, String uploadId);
 typedef void OnAuthRequiredCallback(String uploadId);
 
@@ -67,12 +67,13 @@ class Tus {
     // Trigger the onProgress callback if the callback is provided.
     if (call.method == "progressBlock") {
       var bytesWritten = int.tryParse(call.arguments["bytesWritten"]);
+      var bytesJustWritten = int.tryParse(call.arguments["bytesJustWritten"]);
       var bytesTotal = int.tryParse(call.arguments["bytesTotal"]);
       var uploadId = call.arguments["uploadId"];
 
       if (onProgress != null) {
         double progress = bytesWritten / bytesTotal;
-        onProgress(bytesWritten, bytesTotal, progress, uploadId);
+        onProgress(bytesWritten, bytesJustWritten, bytesTotal, progress, uploadId);
       }
     }
 

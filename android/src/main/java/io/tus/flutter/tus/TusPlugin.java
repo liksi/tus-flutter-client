@@ -228,6 +228,7 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
                 do {
                     long totalBytes = upload.getSize();
                     long bytesUploaded = uploader.getOffset();
+                    long bytesJustUploaded = uploader.getOffset();
                     double progress = (double) bytesUploaded / totalBytes * 100;
 
                     System.out.printf("Upload at %06.2f%%.\n", progress);
@@ -235,6 +236,7 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
                     final HashMap<String, String> args = new HashMap<>();
                     args.put("endpointUrl", endpointUrl);
                     args.put("bytesWritten", Long.toString(bytesUploaded));
+                    args.put("bytesJustWritten", Long.toString(bytesJustUploaded));
                     args.put("bytesTotal", Long.toString(totalBytes));
                     args.put("uploadId", id);
                     new Handler(Looper.getMainLooper()).post(new Runnable() {
