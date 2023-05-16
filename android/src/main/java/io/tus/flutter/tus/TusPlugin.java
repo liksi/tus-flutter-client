@@ -212,6 +212,8 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
         // advantage of tus' resumability to offer more reliability.
         // This step is optional but highly recommended.
         TusExecutor tusExecutor = new TusExecutor() {
+            protected long uploadedChunkBits;
+
             @Override
             protected void makeAttempt() throws ProtocolException, IOException {
                 // First try to resume an upload. If that's not possible we will create a new
@@ -228,7 +230,7 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
                 do {
                     long totalBytes = upload.getSize();
                     long bytesUploaded = uploader.getOffset();
-                    long bytesJustUploaded = uploader.getOffset();
+//                    long bytesJustUploaded = uploader.getOffset() - uploader.getChunkSize();
                     double progress = (double) bytesUploaded / totalBytes * 100;
 
                     System.out.printf("Upload at %06.2f%%.\n", progress);
@@ -236,7 +238,7 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
                     final HashMap<String, String> args = new HashMap<>();
                     args.put("endpointUrl", endpointUrl);
                     args.put("bytesWritten", Long.toString(bytesUploaded));
-                    args.put("bytesJustWritten", Long.toString(bytesJustUploaded));
+                    args.put("bytesJustWritten", Long.toString(this.uploadedChunkBits));
                     args.put("bytesTotal", Long.toString(totalBytes));
                     args.put("uploadId", id);
                     new Handler(Looper.getMainLooper()).post(new Runnable() {
@@ -246,7 +248,7 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
                             methodChannel.invokeMethod("progressBlock", args);
                         }
                     });
-                } while (!isCancelled() && uploader.uploadChunk() > -1);
+                } while (!isCancelled() && hasUploadedChunk(uploader));
 
                 uploader.finish();
 
@@ -262,6 +264,11 @@ class HandleFileUpload extends AsyncTask<Void, HashMap<String, String>, HashMap<
                         result.success(args); // Check if needed on iOS side
                     }
                 });
+            }
+
+            protected boolean hasUploadedChunk(TusUploader uploader) throws IOException, ProtocolException {
+                this.uploadedChunkBits = uploader.uploadChunk();
+                return  this.uploadedChunkBits > -1;
             }
         };
 
