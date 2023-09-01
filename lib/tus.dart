@@ -18,10 +18,10 @@ class Tus {
 
   // The endpoint url.
   final String endpointUrl;
-  OnProgressCallback onProgress;
-  OnCompleteCallback onComplete;
-  OnErrorCallback onError;
-  OnAuthRequiredCallback onAuthRequired;
+  OnProgressCallback? onProgress;
+  OnCompleteCallback? onComplete;
+  OnErrorCallback? onError;
+  OnAuthRequiredCallback? onAuthRequired;
 
   // Flag to ensure that the tus client is initialized.
   bool isInitialized = false;
@@ -41,15 +41,14 @@ class Tus {
       {this.onProgress,
       this.onComplete,
       this.onError,
-      this.headers,
+      Map<String, String>? headers,
       this.allowsCellularAccess = true,
-      this.enableBackground = true}) {
-    assert(endpointUrl != null);
+      this.enableBackground = true}) : this.headers = headers ?? Map<String, String>() {
     _channel.setMethodCallHandler(this.handler);
   }
 
   // Handles the method calls from the native side.
-  Future<void> handler(MethodCall call) {
+  Future<Null> handler(MethodCall call) {
     // Ensure that the endpointUrl provided from the MethodChannel is the same
     // as the flutter client.
     switch (call.method) {
@@ -59,21 +58,21 @@ class Tus {
       case "authRequiredBlock":
         if (call.arguments["endpointUrl"] != endpointUrl) {
           // This method call is not meant for this client.
-          return null;
+          return Future.value(null);
         }
         break;
     }
 
     // Trigger the onProgress callback if the callback is provided.
     if (call.method == "progressBlock") {
-      var bytesWritten = int.tryParse(call.arguments["bytesWritten"]);
-      var bytesJustWritten = int.tryParse(call.arguments["bytesJustWritten"]);
-      var bytesTotal = int.tryParse(call.arguments["bytesTotal"]);
-      var uploadId = call.arguments["uploadId"];
+      var bytesWritten = int.tryParse(call.arguments["bytesWritten"]) ?? 0;
+      var bytesJustWritten = int.tryParse(call.arguments["bytesJustWritten"]) ?? 0;
+      var bytesTotal = int.tryParse(call.arguments["bytesTotal"]) ?? 0;
+      var uploadId = call.arguments["uploadId"]!;
 
       if (onProgress != null) {
         double progress = bytesWritten / bytesTotal;
-        onProgress(bytesWritten, bytesJustWritten, bytesTotal, progress, uploadId);
+        onProgress!(bytesWritten, bytesJustWritten, bytesTotal, progress, uploadId);
       }
     }
 
@@ -82,7 +81,7 @@ class Tus {
       var resultUrl = call.arguments["resultUrl"];
       var uploadId = call.arguments["uploadId"];
       if (onComplete != null) {
-        onComplete(resultUrl, uploadId);
+        onComplete!(resultUrl, uploadId);
       }
     }
 
@@ -92,7 +91,7 @@ class Tus {
       var uploadId = call.arguments["uploadId"] ?? "";
 
       if (onError != null) {
-        onError(error, uploadId);
+        onError!(error, uploadId);
       }
     }
 
@@ -100,9 +99,10 @@ class Tus {
     if (call.method == "authRequiredBlock") {
       var uploadId = call.arguments["uploadId"] ?? "";
       if (onAuthRequired != null) {
-        onAuthRequired(uploadId);
+        onAuthRequired!(uploadId);
       }
     }
+    return Future.value(null);
   }
 
   static Future<String> get platformVersion async {
@@ -110,7 +110,7 @@ class Tus {
     return version;
   }
 
-  Future<void> retryUpload(String uploadId, String fileToUpload, {Map<String, String> metadata}) async {
+  Future<void> retryUpload(String uploadId, String fileToUpload, {Map<String, String>? metadata}) async {
     if (!isInitialized) {
       await initializeWithEndpoint();
     }
@@ -143,7 +143,7 @@ class Tus {
     }
   }
 
-  Future<void> stopUpload({String uploadId, String fileBeingUploaded}) async {
+  Future<void> stopUpload({required String uploadId, required String fileBeingUploaded}) async {
     var result = await _channel.invokeMethod("stopAndRemoveUpload", {
       "uploadId": uploadId,
       "fileUploadUrl": fileBeingUploaded
@@ -174,7 +174,7 @@ class Tus {
   // Performs a file upload using the tus protocol. Provide a [fileToUpload].
   // Optionally, you can provide [metadata] to enrich the file upload.
   // Note that filename is provided in the [metadata] upon upload.
-  Future<dynamic> createUploadFromFile(String fileToUpload, {Map<String, String> metadata}) async {
+  Future<dynamic> createUploadFromFile(String fileToUpload, {Map<String, String>? metadata}) async {
     if (!isInitialized) {
       await initializeWithEndpoint();
     }
@@ -196,8 +196,8 @@ class Tus {
         "metadata": metadata,
       });
 
-      if (result.containsKey("error")) {
-        throw Exception("${result["error"]} { ${result["reason"]} }");
+      if (result?.containsKey("error") ?? false) {
+        throw Exception("${result!["error"]} { ${result!["reason"]} }");
       }
 
       return result;
