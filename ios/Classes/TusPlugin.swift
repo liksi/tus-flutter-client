@@ -1,37 +1,26 @@
 import Flutter
+import UIKit
 import TUSKit
 import os
-
 public class TusPlugin: NSObject, FlutterPlugin {
     private static let channelName = "io.tus.flutter_service"
-    // invalidParameters = "Invalid Parameters"
-    // fileName = "tuskit_example"
-
-    let channel: FlutterMethodChannel
+    private let channel: FlutterMethodChannel
+    private var tusClient: TUSClient?
+    private var configured = false
+    private var configuredEndpointUrl: String?
     private var urlSessionConfiguration: URLSessionConfiguration?
 
-    private var configured = false
-    private var configuredEndpointUrl = ""
-
-    public static var registerPlugins: FlutterPluginRegistrantCallback?
-
-    // MARK: Flutter
     public static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(name: TusPlugin.channelName, binaryMessenger: registrar.messenger())
-
-        let instance = TusPlugin(channel)
-
+        let instance = TusPlugin(channel: channel)
         registrar.addMethodCallDelegate(instance, channel: channel)
-//        registrar.addApplicationDelegate(instance) // TODO: check if this can be used to enable background without modifying main application
     }
 
-    init(_ channel: FlutterMethodChannel) {
+    init(channel: FlutterMethodChannel) {
         self.channel = channel
     }
 
-
-    // MARK: Flutter method call handling
-    public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) -> Void {
+    public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "getPlatformVersion":
             result("iOS " + UIDevice.current.systemVersion)
@@ -40,292 +29,194 @@ public class TusPlugin: NSObject, FlutterPlugin {
         case "createUploadFromFile":
             self.createUploadFromFile(call, result)
         case "retryUpload":
-            self.retryUploadWithId(call, result)
+            self.retryUpload(call, result)
         case "stopAndRemoveUpload":
-            self.stopUpload(call, result)
+            self.stopAndRemoveUpload(call, result)
         default:
             result(FlutterMethodNotImplemented)
         }
     }
 
-    private func stopUpload(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
-       let arguments = call.arguments as! [String: Any?]
-       let uploadId = arguments["uploadId"] as? String
-
-       if (uploadId == nil) {
-           let message = "Missing uploadId argument"
-           result(["error": message])
-           return
-       }
-
-       let uploadToStop = TUSClient.shared.currentUploads?.first(where: {$0.id == uploadId})
-       if (uploadToStop == nil) {
-           let message = "Could not find upload with id \(uploadId!)"
-           result(["error": message])
-           return
-       }
-       if (uploadToStop!.status == .canceled) {
-        let message : String = "Upload with id \(uploadId!) is already cancelled";
-           result(["error": message])
-           return
-       }
-       if (uploadToStop!.status != .canceled) {
-          TUSClient.shared.cancel(forUpload: uploadToStop!) { pausedUpload in
-             TUSClient.shared.cleanUp(forUpload: pausedUpload)
-          }
-          result(["canceled": "true"])
-       }
-    }
-
-    private func retryUploadWithId(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
-        let arguments = call.arguments as! [String: Any?]
-        let newHeaders = arguments["headers"]
-
-        let uploadId = arguments["uploadId"] as? String
-
-        if (TUSClient.shared.currentUploads?.contains(where: {$0.id == uploadId}) ?? false) {
-            let message = "Retry existing upload from TUS flutter plugin"
-            if #available(iOS 10.0, *) {
-                let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
-                os_log("%{public}@", log: log, type: OSLogType.default, message)
-            } else {
-                print(message)
-            }
-            let upload = TUSClient.shared.currentUploads!.first(where: {$0.id == uploadId})!
-
-            if let headers = newHeaders as? [String: String] {
-                upload.customHeaders = headers
-            }
-
-            TUSClient.shared.retry(forUpload: upload)
-
-            result(["inProgress": "true"])
-            return
-        } else {
-            let message = "Create new upload from retry call from TUS flutter plugin"
-            if #available(iOS 10.0, *) {
-                let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
-                os_log("%{public}@", log: log, type: OSLogType.default, message)
-            } else {
-                print(message)
-            }
-            createUploadFromFile(call, result)
-        }
-    }
-
     private func initWithEndpoint(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
-        let arguments = call.arguments as! [String: Any?]
-        let options = arguments["options"] as? [String: Any?]
-        let headers = arguments["headers"] as? [String: String] ?? [:]
-
-        let message = "Init TUSKit from TUS flutter plugin - With headers \(headers)"
-        if #available(iOS 10.0, *) {
-            let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
-            os_log("%{public}@", log: log, type: OSLogType.default, message)
-        } else {
-            print(message)
+        guard let arguments = call.arguments as? [String: Any],
+            let endpointUrlString = arguments["endpointUrl"] as? String,
+            let endpointUrl = URL(string: endpointUrlString) else {
+            result(FlutterError(code: "BAD_ARGS", message: "Missing or invalid 'endpointUrl'", details: nil))
+            return
         }
 
-        // TODO: rework on this section to check for existing "session"
-        let endpointUrl = arguments["endpointUrl"] as! String
-        if (!self.configured) {
-            let message = "Configuring TUSKit from TUS flutter plugin"
-            if #available(iOS 10.0, *) {
-                let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
-                os_log("%{public}@", log: log, type: OSLogType.default, message)
-            } else {
-                print(message)
-            }
-            self.configureURLSession(options)
-            let config = TUSConfig(withUploadURLString: endpointUrl, andSessionConfig: self.urlSessionConfiguration!, withCustomHeaders: headers)
-            config.logLevel = .All // options ?
-            TUSClient.setup(with: config)
-            TUSClient.shared.delegate = self
-            // TODO: configurable chunksize
-            // TUSClient.shared.chunkSize = // options ?
-            self.configuredEndpointUrl = endpointUrl
-            self.configured = true
-        }
-//        TUSClient.shared.resumeAll()
+        // Initialization
+        let sessionIdentifier = UUID().uuidString
+        do {
+            self.tusClient = try TUSClient(
+                server: endpointUrl,
+                sessionIdentifier: sessionIdentifier,
+                sessionConfiguration: .background(withIdentifier: sessionIdentifier),
+                storageDirectory: URL(fileURLWithPath: NSTemporaryDirectory()),
+                chunkSize: 5 * 1024 * 1024
+            )
 
-        result(["endpointUrl": endpointUrl])
-    }
-
-    private func configureURLSession(_ options: [String: Any?]?) {
-        let backgroundEnabled = options?["enableBackground"] as? String == "true"
-        let allowsCellularAccess = options?["allowsCellularAccess"] as? String == "true"
-
-        if (backgroundEnabled) {
-            self.urlSessionConfiguration = URLSessionConfiguration.background(withIdentifier: TusPlugin.channelName)
-            self.urlSessionConfiguration?.httpMaximumConnectionsPerHost = 1
-
-            // TODO: check following properties
-            if #available(iOS 13.0, *) {
-                self.urlSessionConfiguration?.allowsExpensiveNetworkAccess = true
-                self.urlSessionConfiguration?.allowsConstrainedNetworkAccess = true
+            self.tusClient!.delegate = self
+            let remainingUploads = self.tusClient!.start()
+            switch remainingUploads.count {
+            case 0:
+                print("No files to upload")
+            case 1:
+                print("Continuing uploading single file")
+            case let nr:
+                print("Continuing uploading \(nr) file(s)")
             }
 
-            if #available(iOS 9.0, *) {
-                self.urlSessionConfiguration?.shouldUseExtendedBackgroundIdleMode = true
+            let storedUploads = try self.tusClient!.getStoredUploads()
+            for storedUpload in storedUploads {
+                print("\(storedUpload) Stored upload")
+                print("\(storedUpload.uploadedRange?.upperBound ?? 0)/\(storedUpload.size) uploaded")
+                try tusClient!.resume(id: storedUpload.id)
             }
-        } else {
-            self.urlSessionConfiguration = URLSessionConfiguration.default
+
+            self.tusClient!.cleanup()
+        } catch {
+            assertionFailure("Could not fetch failed id's from disk, or could not instantiate TUSClient \(error)")
         }
 
-        self.urlSessionConfiguration?.sessionSendsLaunchEvents = true
-        self.urlSessionConfiguration?.allowsCellularAccess = allowsCellularAccess
+        self.configuredEndpointUrl = endpointUrl.absoluteString
+        self.configured = true
 
-        if #available(iOS 11.0, *) {
-            // TODO: check this (and the associated delegate method)
-            // NOTE: delegate taskIsWaitingForConnectivity is never called for background tasks
-            self.urlSessionConfiguration?.waitsForConnectivity = true
-        }
+        print("Initialized TUSKit with endpoint \(endpointUrl.absoluteString)")
+        result(["endpointUrl": endpointUrl.absoluteString])
     }
 
     private func createUploadFromFile(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
-        let message = "Create new upload from TUS flutter plugin"
-        if #available(iOS 10.0, *) {
-            let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
-            os_log("%{public}@", log: log, type: OSLogType.default, message)
-        } else {
-            print(message)
+        print("Create new upload from TUS flutter plugin")
+
+        guard let tusClient = self.tusClient else {
+            result(FlutterError(code: "NO_CLIENT", message: "TUSClient has not been initialized. Call 'initWithEndpoint' first.", details: nil))
+            return
         }
-
-        let arguments = call.arguments as! [String: Any?]
-
-        guard self.configured else {
-            result(["error": "Missing configuration", "reason": "You must configure TUS before calling upload, use initWithEndpoint method"])
+        guard let arguments = call.arguments as? [String: Any],
+            let fileUploadUrl = arguments["fileUploadUrl"] as? String else {
+            result(FlutterError(code: "BAD_ARGS", message: "Argument 'fileUploadUrl' is missing", details: nil))
             return
         }
 
-        guard let fileUploadUrlString = arguments["fileUploadUrl"] as? String else {
-            result(["error": "Argument missing", "reason": "Argument fileUploadUrl is missing"])
-            return
+        let fileURL = URL(fileURLWithPath: fileUploadUrl)
+        let metadata = arguments["metadata"] as? [String: String] ?? [:]
+        let headers = arguments["headers"] as? [String: String] ?? [:]
+        
+        print("Starting upload with metadata: \(metadata) and headers: \(headers) and fileURL \(fileURL)")
+        
+        do {
+            try tusClient.uploadFileAt(filePath: fileURL, customHeaders: headers, context: metadata)
+        } catch {
+            result(FlutterError(code: "UPLOAD_ERROR", message: "Failed to create new upload: \(error.localizedDescription)", details: nil))
         }
-        let fileUploadUrl = URL(fileURLWithPath: fileUploadUrlString)
-        let fileNameExt = fileUploadUrl.lastPathComponent.components(separatedBy: ".")
-        guard let fileName = fileNameExt.first else {
-            result(["error": "Argument malformed", "reason": "Cannot infer file name from fileUploadUrl"])
-            return
-        }
-        guard var fileType = fileNameExt.last else {
-            result(["error": "Argument malformed", "reason": "Cannot infer file extension from fileUploadUrl"])
-            return
-        }
-        fileType = "." + fileType
-        guard let headers = arguments["headers"] as? [String: String] else { // Not mandatory anymore
-            result(["error": "Missing argument", "reason": "Argument for TUS headers is missing"])
-            return
-        }
-        let metadata = arguments["metadata"] as? [String: String]
+    }
 
-        // arguments["retry"]
+    private func retryUpload(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+        print("Retrying upload from TUS flutter plugin")
 
-        var upload: TUSUpload
-
-        // if currentUploads does not contain "fileName as id" then create new tusupload object
-        if (TUSClient.shared.currentUploads?.contains(where: {$0.id == fileName}) ?? false) {
-            upload = TUSClient.shared.currentUploads!.first(where: {$0.id == fileName})!
-            switch upload.status {
-                case .new, .paused, .created, .enqueued:
-                    break
-                case .error:
-                    TUSClient.shared.pause(forUpload: upload) { pausedUpload in
-                        pausedUpload.metadata = metadata ?? [String: String]()
-                        TUSClient.shared.createOrResume(forUpload: pausedUpload, withCustomHeaders: headers)
-                        result(["inProgress": "true"])
-                    }
-                    return
-                case .uploading: // TODO: check for .uploading status (should happen only in few specific hard to debug cases, e. g. when background session launched but delegate not called)
-                    TUSClient.shared.pause(forUpload: upload) { pausedUpload in
-                        result(["error": "Cannot handle current upload state.",
-                        "reason": "Trying to recreate a .uploading object. Use retry instead"])
-                    }
-                    return
-                default:
-                    result(["error": "Cannot handle current upload state.",
-                            "reason": "Upload exists and has unhandled status \(upload.status?.rawValue ?? "unknown")"])
-                    return
+        guard let tusClient = self.tusClient else {
+            result(FlutterError(code: "NO_CLIENT", message: "TUSClient has not been initialized. Call 'initWithEndpoint' first.", details: nil))
+            return
+        }
+        guard let arguments = call.arguments as? [String: Any],
+            let uploadId = arguments["uploadId"] as? String else {
+            result(FlutterError(code: "BAD_ARGS", message: "Argument 'uploadId' is missing", details: nil))
+            return
+        }
+        guard let arguments = call.arguments as? [String: Any],
+            let fileUploadUrl = arguments["fileUploadUrl"] as? String else {
+            result(FlutterError(code: "BAD_ARGS", message: "Argument 'fileUploadUrl' is missing", details: nil))
+            return
+        }
+        
+        let fileURL = URL(fileURLWithPath: fileUploadUrl)
+        let metadata = arguments["metadata"] as? [String: String] ?? [:]
+        let headers = arguments["headers"] as? [String: String] ?? [:]
+        
+        do {
+            let retrySuccess = try tusClient.retry(id: UUID(uuidString: uploadId)!)
+            if retrySuccess {
+                result(["resetAndupload": true, "uploadId": uploadId])
+            } else {
+                let resumeSuccess = try tusClient.resume(id: UUID(uuidString: uploadId)!)
+                if resumeSuccess {
+                    result(["resumed": true, "uploadId": uploadId])
+                } else {
+                    try tusClient.uploadFileAt(filePath: fileURL, customHeaders: headers, context: metadata)
+                    result(["restarted": true, "uploadId": uploadId])
+                }
             }
-        } else {
-            upload = TUSUpload(withId: fileName, andFilePathURL: fileUploadUrl, andFileType: fileType)
+        } catch {
+            result(FlutterError(code: "UPLOAD_ERROR", message: "Failed to manage the upload: \(error.localizedDescription)", details: nil))
         }
+    }
 
-        upload.metadata = metadata ?? [String: String]()
-        TUSClient.shared.createOrResume(forUpload: upload, withCustomHeaders: headers)
-        result(["inProgress": "true"])
+    private func stopAndRemoveUpload(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+        guard let tusClient = self.tusClient else {
+            result(FlutterError(code: "NO_CLIENT", message: "TUSClient has not been initialized. Call 'initWithEndpoint' first.", details: nil))
+            return
+        }
+        guard let arguments = call.arguments as? [String: Any],
+            let uploadId = arguments["uploadId"] as? UUID else {
+            result(FlutterError(code: "BAD_ARGS", message: "Argument 'uploadId' is missing", details: nil))
+            return
+        }
+        do {
+            // Cancel the upload
+            try tusClient.cancel(id: uploadId)
+            tusClient.cleanup()
+            result(["canceled": true])
+        } catch {
+            result(FlutterError(code: "CANCEL_ERROR", message: "Failed to cancel upload: \(error.localizedDescription)", details: nil))
+        }
     }
 }
 
-extension TusPlugin: TUSDelegate {
-    public func TUSProgress(bytesUploaded uploaded: Int, bytesRemaining remaining: Int) {
-    }
+extension TusPlugin: TUSClientDelegate {
+    public func progressFor(id: UUID, context: [String : String]?, bytesUploaded: Int, totalBytes: Int, client: TUSKit.TUSClient) {
+        print("Upload progress for \(id) \(bytesUploaded)/\(totalBytes) bytes uploaded")
 
-    public func TUSProgress(forUpload upload: TUSUpload, bytesUploaded uploaded: Int, bytesJustUploaded justUploaded: Int, bytesRemaining remaining: Int) {
         var args = [String: String]()
-        args["bytesWritten"] = String(uploaded)
-        args["bytesJustWritten"] = String(justUploaded)
-        args["bytesTotal"] = String(remaining) // Misnaming in TUSKit v2.0.0 release, "remaining" is effectively "total"
         args["endpointUrl"] = self.configuredEndpointUrl
-        args["uploadId"] = upload.id
+        args["bytesWritten"] = String(bytesUploaded)
+        args["bytesTotal"] = String(totalBytes)
+        args["uploadId"] = context!["uuid"]
 
         self.channel.invokeMethod("progressBlock", arguments: args)
     }
-
-    public func TUSSuccess(forUpload upload: TUSUpload) {
+    
+    public func didStartUpload(id: UUID, context: [String : String]?, client: TUSKit.TUSClient) {
+        print("Upload start for \(id)")
+    }
+    
+    public func didFinishUpload(id: UUID, url: URL, context: [String : String]?, client: TUSKit.TUSClient) {
+        print("Upload finished for \(id)")
 
         var args = [String: String]()
         args["endpointUrl"] = self.configuredEndpointUrl
-        args["resultUrl"] = upload.uploadLocationURL?.absoluteString
-        args["uploadId"] = upload.id
-
-        let message = "TUSSuccess delegate called from TUS flutter plugin with arguments: \(args)"
-        if #available(iOS 10.0, *) {
-            let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
-            os_log("%{public}@", log: log, type: OSLogType.default, message)
-        } else {
-            print(message)
-        }
+        args["resultUrl"] = url.absoluteString
+        args["uploadId"] = context!["uuid"]
 
         self.channel.invokeMethod("resultBlock", arguments: args)
-        // result(args) ???
     }
+    
+    public func uploadFailed(id: UUID, error: Error, context: [String : String]?, client: TUSKit.TUSClient) {
+        print("Upload failed for \(id)")
 
-    public func TUSFailure(forUpload upload: TUSUpload?, withResponse response: TUSResponse?, andError error: Error?) {
         var args = [String: String]()
         args["endpointUrl"] = self.configuredEndpointUrl
-        args["error"] = error as? String ?? response?.message ?? "No message for failure"
-        args["uploadId"] = upload?.id ?? ""
-
-
-        let message = "TUSFailure delegate called from TUS flutter plugin with arguments: \(args)"
-        if #available(iOS 10.0, *) {
-            let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
-            os_log("%{public}@", log: log, type: OSLogType.default, message)
-        } else {
-            print(message)
-        }
+        args["error"] = error.localizedDescription
+        args["uploadId"] = context!["uuid"]
 
         self.channel.invokeMethod("failureBlock", arguments: args)
     }
-
-    public func TUSAuthRequired(forUpload upload: TUSUpload?) {
-        var args = [String: String]()
-        args["endpointUrl"] = self.configuredEndpointUrl
-        args["uploadId"] = upload?.id ?? ""
-
-        if (upload == nil) {
-            args["error"] = "Auth required but no upload provided"
-        }
-
-        let message = "TUSAuthRequired delegate called from TUS flutter plugin with arguments: \(args)"
-        if #available(iOS 10.0, *) {
-            let log = OSLog(subsystem: Bundle.main.bundleIdentifier!, category: "TUSKit") // subsystem ?
-            os_log("%{public}@", log: log, type: OSLogType.default, message)
-        } else {
-            print(message)
-        }
-
-        self.channel.invokeMethod("authRequiredBlock", arguments: args)
+    
+    public func fileError(error: TUSKit.TUSClientError, client: TUSKit.TUSClient) {
+        print("Upload file error \(error)")
+    }
+    
+    public func totalProgress(bytesUploaded: Int, totalBytes: Int, client: TUSKit.TUSClient) {
+        print("Upload total progress \(bytesUploaded)")
     }
 }

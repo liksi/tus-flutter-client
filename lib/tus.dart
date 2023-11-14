@@ -5,7 +5,7 @@ import 'dart:core';
 import 'package:flutter/services.dart';
 
 typedef void OnCompleteCallback(String result, String uploadId);
-typedef void OnProgressCallback(int bytesWritten, int bytesJustWritten, int bytesTotal, double progress, String uploadId);
+typedef void OnProgressCallback(int bytesWritten, int bytesTotal, double progress, String uploadId);
 typedef void OnErrorCallback(String error, String uploadId);
 typedef void OnAuthRequiredCallback(String uploadId);
 
@@ -66,20 +66,22 @@ class Tus {
     // Trigger the onProgress callback if the callback is provided.
     if (call.method == "progressBlock") {
       var bytesWritten = int.tryParse(call.arguments["bytesWritten"]) ?? 0;
-      var bytesJustWritten = int.tryParse(call.arguments["bytesJustWritten"]) ?? 0;
       var bytesTotal = int.tryParse(call.arguments["bytesTotal"]) ?? 0;
-      var uploadId = call.arguments["uploadId"]!;
+      // TUSKit traite la fichier en amont en le convertissant en UUID uppercase
+      // Pour que l'id match la correlationId en BDD il faut convertir en lowercase
+      var uploadId = call.arguments["uploadId"] ?? "";
 
       if (onProgress != null) {
         double progress = bytesWritten / bytesTotal;
-        onProgress!(bytesWritten, bytesJustWritten, bytesTotal, progress, uploadId);
+        onProgress!(bytesWritten, bytesTotal, progress, uploadId);
       }
     }
 
     // Trigger the onComplete callback if the callback is provided.
     if (call.method == "resultBlock") {
       var resultUrl = call.arguments["resultUrl"];
-      var uploadId = call.arguments["uploadId"];
+      var uploadId = call.arguments["uploadId"] ?? "";
+
       if (onComplete != null) {
         onComplete!(resultUrl, uploadId);
       }
