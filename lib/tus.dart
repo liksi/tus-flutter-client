@@ -67,8 +67,6 @@ class Tus {
     if (call.method == "progressBlock") {
       var bytesWritten = int.tryParse(call.arguments["bytesWritten"]) ?? 0;
       var bytesTotal = int.tryParse(call.arguments["bytesTotal"]) ?? 0;
-      // TUSKit traite la fichier en amont en le convertissant en UUID uppercase
-      // Pour que l'id match la correlationId en BDD il faut convertir en lowercase
       var uploadId = call.arguments["uploadId"] ?? "";
 
       if (onProgress != null) {

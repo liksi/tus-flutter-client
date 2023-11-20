@@ -107,6 +107,7 @@ public class TusPlugin: NSObject, FlutterPlugin {
         
         do {
             try tusClient.uploadFileAt(filePath: fileURL, customHeaders: headers, context: metadata)
+            result(["inProgress": true])
         } catch {
             result(FlutterError(code: "UPLOAD_ERROR", message: "Failed to create new upload: \(error.localizedDescription)", details: nil))
         }
@@ -133,19 +134,16 @@ public class TusPlugin: NSObject, FlutterPlugin {
         let fileURL = URL(fileURLWithPath: fileUploadUrl)
         let metadata = arguments["metadata"] as? [String: String] ?? [:]
         let headers = arguments["headers"] as? [String: String] ?? [:]
+
+        print("Starting retryUpload with metadata: \(metadata) and headers: \(headers) and fileURL \(fileURL)")
         
         do {
             let retrySuccess = try tusClient.retry(id: UUID(uuidString: uploadId)!)
             if retrySuccess {
-                result(["resetAndupload": true, "uploadId": uploadId])
+                result(["inProgress": true])
             } else {
-                let resumeSuccess = try tusClient.resume(id: UUID(uuidString: uploadId)!)
-                if resumeSuccess {
-                    result(["resumed": true, "uploadId": uploadId])
-                } else {
-                    try tusClient.uploadFileAt(filePath: fileURL, customHeaders: headers, context: metadata)
-                    result(["restarted": true, "uploadId": uploadId])
-                }
+                try tusClient.uploadFileAt(filePath: fileURL, customHeaders: headers, context: metadata)
+                result(["inProgress": true])
             }
         } catch {
             result(FlutterError(code: "UPLOAD_ERROR", message: "Failed to manage the upload: \(error.localizedDescription)", details: nil))
@@ -217,6 +215,6 @@ extension TusPlugin: TUSClientDelegate {
     }
     
     public func totalProgress(bytesUploaded: Int, totalBytes: Int, client: TUSKit.TUSClient) {
-        print("Upload total progress \(bytesUploaded)")
+        //print("Upload total progress \(bytesUploaded)")
     }
 }
