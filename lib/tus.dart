@@ -157,6 +157,8 @@ class Tus {
 
   // Initialize the tus client on the native side.
   Future<Map> initializeWithEndpoint() async {
+    if (isInitialized) return {};
+
     var response = await _channel.invokeMethod("initWithEndpoint", <String, dynamic>{
       "endpointUrl": endpointUrl,
       "headers": headers,
