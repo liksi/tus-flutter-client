@@ -53,7 +53,7 @@ public class TusPlugin: NSObject, FlutterPlugin {
                 sessionIdentifier: sessionIdentifier,
                 sessionConfiguration: .background(withIdentifier: sessionIdentifier),
                 storageDirectory: URL(fileURLWithPath: NSTemporaryDirectory()),
-                chunkSize: 0
+                chunkSize: 5 * 1024 * 1024
             )
 
             self.tusClient!.delegate = self
